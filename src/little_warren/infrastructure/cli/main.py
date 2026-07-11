@@ -25,6 +25,38 @@ def version() -> None:
 
 
 @app.command()
+def analyze(
+    ticker: str,
+    days: int = typer.Option(None, help="Lookback window in days (defaults to settings)"),
+    interval: str = typer.Option(None, help="Bar interval, e.g. 1d, 1wk"),
+    reversal: float = typer.Option(0.05, help="Swing detection reversal threshold (fraction)"),
+) -> None:
+    """Analyse a ticker with the rules engine and print the pick, if any."""
+    from datetime import date
+
+    from little_warren.application.analysis_service.service import AnalysisService
+
+    settings = get_settings()
+    service = AnalysisService(provider=YFinanceProvider(), reversal=reversal)
+    pick = service.analyze(
+        ticker,
+        as_of=date.today(),
+        lookback_days=days or settings.default_lookback_days,
+        interval=interval or settings.default_interval,
+    )
+    if pick is None:
+        typer.echo(f"{ticker}: no actionable signal right now (all conditions must hold, FND-25)")
+        return
+    typer.echo(f"{pick.ticker}  {pick.direction.value.upper()}")
+    typer.echo(f"  entry      {pick.entry:.2f}")
+    typer.echo(f"  stop       {pick.stop:.2f}   (risk/unit {pick.risk_per_unit:.2f})")
+    typer.echo(f"  target     {pick.target:.2f}" if pick.target else "  target     -")
+    typer.echo(f"  confidence {pick.confidence:.0%}")
+    typer.echo(f"  rules      {', '.join(pick.rules_fired)}")
+    typer.echo(f"  notes      {pick.notes}")
+
+
+@app.command()
 def fetch(
     ticker: str,
     days: int = typer.Option(None, help="Lookback window in days (defaults to settings)"),
