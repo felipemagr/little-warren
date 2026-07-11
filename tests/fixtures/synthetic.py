@@ -13,18 +13,23 @@ from little_warren.domain.value_objects.swing import SwingKind, SwingPoint
 from little_warren.domain.value_objects.wave import Wave
 
 
-def bars_from_waypoints(waypoints: list[float], bars_per_leg: int = 5, start: str = "2024-01-01") -> pd.DataFrame:
+def bars_from_waypoints(
+    waypoints: list[float], bars_per_leg: int | list[int] = 5, start: str = "2024-01-01"
+) -> pd.DataFrame:
     """Build an OHLCV frame whose price travels linearly through `waypoints`.
 
-    Each consecutive pair of waypoints becomes one leg of `bars_per_leg` bars.
-    Bars are degenerate (open=high=low=close) so pivot prices land exactly on
-    the waypoints, making assertions deterministic.
+    Each consecutive pair of waypoints becomes one leg of `bars_per_leg` bars
+    (pass a list for per-leg counts). Bars are degenerate (open=high=low=close)
+    so pivot prices land exactly on the waypoints, making assertions deterministic.
     """
     if len(waypoints) < 2:
         raise ValueError("need at least two waypoints")
+    legs = [bars_per_leg] * (len(waypoints) - 1) if isinstance(bars_per_leg, int) else bars_per_leg
+    if len(legs) != len(waypoints) - 1:
+        raise ValueError("bars_per_leg list must have len(waypoints) - 1 entries")
     closes: list[float] = []
-    for leg_start, leg_end in zip(waypoints[:-1], waypoints[1:], strict=True):
-        leg = np.linspace(leg_start, leg_end, bars_per_leg + 1)[:-1]
+    for (leg_start, leg_end), bars in zip(zip(waypoints[:-1], waypoints[1:], strict=True), legs, strict=True):
+        leg = np.linspace(leg_start, leg_end, bars + 1)[:-1]
         closes.extend(leg.tolist())
     closes.append(waypoints[-1])
 
