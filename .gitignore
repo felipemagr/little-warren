@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Environment
+.env
+
+# Local data cache
+data/cache/
+
+# Local knowledge base - never distributed
+docs/*.pdf
+docs/extraction/
+docs/sistema.md
+
+# macOS
+.DS_Store

@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "little-warren"
+version = "0.1.0"
+description = "Rules-based stock analysis: picks with stops and confidence, validated by backtesting"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pandas>=2.2.0",
+    "numpy>=2.0.0",
+    "yfinance>=0.2.50",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.10.0",
+    "loguru>=0.7.3",
+    "typer>=0.20.0",
+]
+
+[dependency-groups]
+ui = [
+    "streamlit>=1.40.0",
+    "plotly>=6.0.0",
+]
+dev = [
+    "ruff>=0.13.1",
+    "pre-commit>=4.3.0",
+    "ipykernel>=6.30.0",
+]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-xdist>=3.5.0",
+]
+
+[tool.ruff]
+line-length = 119
+target-version = "py312"
+extend-exclude = [".venv", "notebooks", ".claude"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "UP",
+  "B",
+  "SIM",
+  "I",
+  "ASYNC",
+  "W",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --tb=short"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: marks tests as unit tests (fast, isolated logic)",
+    "integration: marks tests as integration tests (external dependencies, e.g. market data)",
+    "e2e: marks tests as end-to-end tests (full analysis pipeline)",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.hatchling.build.targets.wheel]
+packages = ["src/little_warren"]
