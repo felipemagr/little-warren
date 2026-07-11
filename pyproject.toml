@@ -35,6 +35,9 @@ test = [
     "pytest-xdist>=3.5.0",
 ]
 
+[tool.uv]
+default-groups = ["dev", "test"]
+
 [tool.ruff]
 line-length = 119
 target-version = "py312"
