@@ -57,6 +57,36 @@ def analyze(
 
 
 @app.command()
+def backtest(
+    ticker: str,
+    days: int = typer.Option(1825, help="History window in days (default ~5y)"),
+    interval: str = typer.Option("1d", help="Bar interval"),
+    reversal: float = typer.Option(0.05, help="Swing detection reversal threshold (fraction)"),
+) -> None:
+    """Walk-forward backtest of the rules engine on one ticker."""
+    from datetime import date, timedelta
+
+    from little_warren.application.analysis_service.service import AnalysisService
+    from little_warren.application.backtest_service.service import BacktestService
+
+    end = date.today()
+    frame = YFinanceProvider().fetch_ohlcv(ticker, start=end - timedelta(days=days), end=end, interval=interval)
+    report = BacktestService(AnalysisService(provider=None, reversal=reversal)).run(frame, ticker=ticker)
+
+    typer.echo(f"{ticker}: {report.bars} bars, {len(report.trades)} trades")
+    for trade in report.trades:
+        pick = trade.pick
+        r = f"{trade.r_multiple:+.2f}R" if trade.r_multiple is not None else "open"
+        typer.echo(
+            f"  {pick.as_of}  {pick.direction.value:5}  entry {pick.entry:9.2f}  stop {pick.stop:9.2f}  "
+            f"target {pick.target:9.2f}  conf {pick.confidence:.0%}  -> {trade.outcome.value:6} {r}"
+        )
+    if report.hit_rate is not None:
+        pf = f"{report.profit_factor:.2f}" if report.profit_factor is not None else "inf"
+        typer.echo(f"  hit rate {report.hit_rate:.0%}  profit factor {pf}  avg {report.avg_r:+.2f}R")
+
+
+@app.command()
 def fetch(
     ticker: str,
     days: int = typer.Option(None, help="Lookback window in days (defaults to settings)"),
