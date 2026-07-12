@@ -58,12 +58,19 @@ def normalize_symbols(symbols: list[str], suffix: str) -> list[str]:
     return list(dict.fromkeys(normalized))
 
 
+KNOWN_EXCHANGE_SUFFIXES = {"L", "PA", "DE", "AS", "SW", "MC", "MI", "BR", "VI", "ST", "CO", "HE"}
+
+
 def _to_yahoo(symbol: str, suffix: str) -> str:
-    """US tickers: BRK.B -> BRK-B. Suffixed markets get their exchange suffix only
-    when the symbol has none (a DAX table row can list AIR.PA for Airbus)."""
+    """US tickers: BRK.B -> BRK-B. Suffixed markets keep an existing exchange suffix
+    (a DAX row can list AIR.PA for Airbus); share-class dots become dashes before the
+    suffix is appended (LSE BT.A -> BT-A.L, AV. -> AV.L)."""
     if not suffix:
         return symbol.replace(".", "-")
-    return symbol if "." in symbol else symbol + suffix.upper()
+    head, _, tail = symbol.rstrip(".").rpartition(".")
+    if head and tail in KNOWN_EXCHANGE_SUFFIXES:
+        return symbol
+    return symbol.rstrip(".").replace(".", "-") + suffix.upper()
 
 
 def _fetch_from_wikipedia(url: str, column: str) -> list[str]:

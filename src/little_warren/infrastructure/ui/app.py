@@ -8,7 +8,7 @@ import streamlit as st
 
 from little_warren.application.analysis_service.service import AnalysisService
 from little_warren.application.scan_service import ScanResult, ScanService
-from little_warren.domain.entities import Pick
+from little_warren.domain.entities import Direction, Pick
 from little_warren.infrastructure.data import YFinanceProvider
 from little_warren.infrastructure.data.universes import get_presets
 
@@ -45,23 +45,36 @@ def run_scan(tickers: list[str], lookback_days: int, reversal: float, stochastic
     return result
 
 
-def picks_table(picks: list[Pick]) -> pd.DataFrame:
-    return pd.DataFrame(
-        [
-            {
-                "ticker": p.ticker,
-                "direction": p.direction.value,
-                "confidence": p.confidence,
-                "entry": round(p.entry, 2),
-                "stop": round(p.stop, 2),
-                "target": None if p.target is None else round(p.target, 2),
-                "reward/risk": None if p.target is None else round(abs(p.entry - p.target) / p.risk_per_unit, 2),
-                "stochastics": p.evidence.get("stoch_filter"),
-                "rules": ", ".join(p.rules_fired),
-            }
-            for p in picks
-        ]
-    )
+@st.cache_data(ttl=None, show_spinner=False)
+def company_name(ticker: str) -> str:
+    name = YFinanceProvider().company_name(ticker)
+    return (name or "").replace("|", "/")
+
+
+def _reward_risk(p: Pick) -> str:
+    """Reward:risk of a pick, or a plain warning when the minimum move already happened."""
+    if p.target is None:
+        return "-"
+    target_already_met = p.target <= p.entry if p.direction is Direction.LONG else p.target >= p.entry
+    if target_already_met:
+        return "target met - no trade"
+    return f"{abs(p.entry - p.target) / p.risk_per_unit:.2f}"
+
+
+def picks_markdown(picks: list[Pick]) -> str:
+    """Render picks as a markdown table."""
+    lines = [
+        "| ticker | company | direction | confidence | entry | stop | target | reward/risk | stochastics | rules |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for p in picks:
+        target = f"{p.target:.2f}" if p.target is not None else "-"
+        stoch = p.evidence.get("stoch_filter") or "-"
+        lines.append(
+            f"| {p.ticker} | {company_name(p.ticker) or '-'} | {p.direction.value} | **{p.confidence:.0%}** "
+            f"| {p.entry:.2f} | {p.stop:.2f} | {target} | {_reward_risk(p)} | {stoch} | {', '.join(p.rules_fired)} |"
+        )
+    return "\n".join(lines)
 
 
 def pick_chart(pick: Pick, lookback_days: int) -> go.Figure:
@@ -115,7 +128,11 @@ def main() -> None:
         presets = load_presets()
         labels = {name: f"{name} ({len(tickers)})" for name, tickers in presets.items()}
         chosen_presets = st.multiselect(
-            "Presets", list(presets), default=["S&P 500"], format_func=lambda name: labels[name]
+            "Presets", list(presets), default=["IBEX 35"], format_func=lambda name: labels[name]
+        )
+        st.caption(
+            "First scan of a universe downloads its price history (a few minutes for the S&P 500); "
+            "rescans the same day are fast (cached)."
         )
         custom = st.text_area("Any other tickers", placeholder="TSLA, BTC-USD, GOLD ... anything Yahoo knows")
         st.header("Filters")
@@ -124,7 +141,7 @@ def main() -> None:
             lookback_days = st.number_input("Lookback (days)", 200, 3650, 730, step=50)
             reversal = st.number_input("Swing threshold", 0.02, 0.10, 0.04, step=0.01, format="%.2f")
             stochastic_gate = st.checkbox("Hard stochastic gate (ENT-COR-03)", value=False)
-        scan_clicked = st.button("Scan", type="primary", use_container_width=True)
+        scan_clicked = st.button("Scan", type="primary", width="stretch")
 
     tickers = [t for preset in chosen_presets for t in presets[preset]]
     tickers += custom.replace(",", " ").split()
@@ -163,20 +180,13 @@ def main() -> None:
         )
         return
 
-    st.dataframe(
-        picks_table(high),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "confidence": st.column_config.ProgressColumn("confidence", format="percent", min_value=0, max_value=1)
-        },
-    )
+    st.markdown(picks_markdown(high))
 
     st.subheader("Pick detail")
     label_by_pick = {f"{p.ticker} {p.direction.value} ({p.confidence:.0%})": p for p in high}
     selected = st.selectbox("Inspect", list(label_by_pick))
     pick = label_by_pick[selected]
-    st.plotly_chart(pick_chart(pick, int(lookback_days)), use_container_width=True)
+    st.plotly_chart(pick_chart(pick, int(lookback_days)), width="stretch")
     left, right = st.columns(2)
     left.markdown(f"**Rules fired:** {', '.join(pick.rules_fired)}")
     left.markdown(f"**Notes:** {pick.notes}")

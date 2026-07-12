@@ -54,6 +54,22 @@ class TestScanService:
 
         assert [p.ticker for p in result.picks_above(0.80)] == ["BETTER"]
 
+    def test_deadline_marks_stragglers_failed(self):
+        import time
+
+        class SlowAnalysis:
+            def analyze(self, ticker, as_of, lookback_days=730, interval="1d"):
+                time.sleep(0.2)
+                return make_pick(ticker, 0.7)
+
+        service = ScanService(SlowAnalysis(), max_workers=1)
+
+        result = service.scan(["T0", "T1", "T2", "T3"], as_of=AS_OF, timeout_seconds=0.05)
+
+        assert len(result.picks) >= 1
+        assert len(result.picks) + len(result.failed) == 4
+        assert "T3" in result.failed
+
     def test_tickers_deduplicated_and_normalized(self):
         service = ScanService(StubAnalysis(), max_workers=2)
 

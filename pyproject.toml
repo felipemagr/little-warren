@@ -9,7 +9,7 @@ description = "Rules-based stock analysis: picks with stops and confidence, vali
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "pandas>=2.2.0",
+    "pandas>=2.2.0,<3",
     "numpy>=2.0.0",
     "yfinance>=0.2.50",
     "pydantic>=2.9.0",
