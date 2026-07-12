@@ -543,8 +543,10 @@ dependencies = [
     { name = "loguru" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "plotly" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "streamlit" },
     { name = "typer" },
     { name = "yfinance" },
 ]
@@ -571,8 +573,10 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "pandas", specifier = ">=2.2.0" },
+    { name = "plotly", specifier = ">=6.9.0" },
     { name = "pydantic", specifier = ">=2.9.0" },
     { name = "pydantic-settings", specifier = ">=2.10.0" },
+    { name = "streamlit", specifier = ">=1.59.1" },
     { name = "typer", specifier = ">=0.20.0" },
     { name = "yfinance", specifier = ">=0.2.50" },
 ]
