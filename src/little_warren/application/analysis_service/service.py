@@ -6,6 +6,7 @@ rule-traced confidence score.
 """
 
 from datetime import date, timedelta
+from enum import StrEnum
 
 import pandas as pd
 
@@ -30,13 +31,35 @@ the spec's 'most reliable signal'; fifth failure and terminal patterns carry a
 minimum-move guarantee to the pattern origin). Calibrate against backtests."""
 
 
+class EntryMode(StrEnum):
+    """How the entry price is set at the confirmed break bar.
+
+    BREAK_CLOSE enters at the break bar's close. LINE_LEVEL assumes a resting
+    order at the 2-4 line's price on the break bar (the close crossed the line,
+    so the level traded within that bar); it falls back to the break close when
+    degenerate geometry would leave the line level beyond the stop.
+    """
+
+    BREAK_CLOSE = "break-close"
+    LINE_LEVEL = "line-level"
+
+
 class AnalysisService:
     """Analyse tickers with the codified system and emit reversal Picks."""
 
-    def __init__(self, provider: MarketDataProvider, reversal: float = 0.05, freshness_bars: int = 10):
+    def __init__(
+        self,
+        provider: MarketDataProvider,
+        reversal: float = 0.05,
+        freshness_bars: int = 10,
+        stop_offset: float = STOP_OFFSET_FRACTION,
+        entry_mode: EntryMode | str = EntryMode.BREAK_CLOSE,
+    ):
         self._provider = provider
         self._reversal = reversal
         self._freshness_bars = freshness_bars
+        self._stop_offset = stop_offset
+        self._entry_mode = EntryMode(entry_mode)
 
     def analyze(self, ticker: str, as_of: date, lookback_days: int = 730, interval: str = "1d") -> Pick | None:
         """Fetch data up to `as_of` and analyse it (no look-ahead beyond as_of)."""
@@ -75,9 +98,9 @@ class AnalysisService:
         """The confirmed 2-4 break trades AGAINST the concluded impulse (L24-03)."""
         impulse_up = waves[0].is_up
         direction = Direction.SHORT if impulse_up else Direction.LONG
-        entry = float(frame["close"].iloc[outcome.break_index])
         w5_extreme = waves[4].end.price
-        stop = w5_extreme * (1 + STOP_OFFSET_FRACTION) if impulse_up else w5_extreme * (1 - STOP_OFFSET_FRACTION)
+        stop = w5_extreme * (1 + self._stop_offset) if impulse_up else w5_extreme * (1 - self._stop_offset)
+        entry = self._entry_price(frame, outcome, stop, impulse_up)
 
         fifth_failure = confirms_fifth_failure(waves, outcome)
         target, target_rule = self._target(waves, assessment, fifth_failure)
@@ -102,8 +125,23 @@ class AnalysisService:
             target=target,
             confidence=min(confidence, CONFIDENCE_CAP),
             rules_fired=list(dict.fromkeys(rules)),
+            evidence={
+                "violent": outcome.violent,
+                "fifth_failure": fifth_failure,
+                "terminal": assessment.is_terminal,
+                "extended_wave": assessment.extended_wave,
+            },
             notes=outcome.detail,
         )
+
+    def _entry_price(self, frame: pd.DataFrame, outcome: LineBreakResult, stop: float, impulse_up: bool) -> float:
+        """Entry per the configured mode; LINE_LEVEL falls back to the close if the line sits beyond the stop."""
+        break_close = float(frame["close"].iloc[outcome.break_index])
+        if self._entry_mode is EntryMode.BREAK_CLOSE:
+            return break_close
+        line_level = outcome.line.price_at(outcome.break_index)
+        protected = line_level < stop if impulse_up else line_level > stop
+        return line_level if protected else break_close
 
     def _target(self, waves: list[Wave], assessment: ImpulseAssessment, fifth_failure: bool) -> tuple[float, str]:
         """L24-04 phase 2: per-pattern minimum retracement requirement."""

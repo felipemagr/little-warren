@@ -29,6 +29,9 @@ class Pick(BaseModel):
     target: float | None = Field(default=None, gt=0, description="Price objective, if the fired rules define one")
     confidence: float = Field(ge=0.0, le=1.0, description="Aggregated confidence score in [0, 1]")
     rules_fired: list[str] = Field(min_length=1, description="Spec rule IDs supporting this pick")
+    evidence: dict[str, bool | int | None] = Field(
+        default_factory=dict, description="Rule-traced evidence flags behind the confidence score"
+    )
     notes: str = ""
 
     @model_validator(mode="after")
