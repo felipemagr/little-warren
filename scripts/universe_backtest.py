@@ -1,6 +1,7 @@
 """Universe-wide walk-forward QA backtest. Usage: uv run python scripts/universe_backtest.py"""
 
 import json
+import random
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import date, timedelta
 
@@ -56,6 +57,14 @@ UNIVERSE = [
     "^DJI",
     "^IBEX",
 ]
+
+# Deterministic DEV/HOLDOUT split
+_SPLIT_SEED = 42
+_DEV_SIZE = 30
+_shuffled = sorted(UNIVERSE)
+random.Random(_SPLIT_SEED).shuffle(_shuffled)
+DEV_UNIVERSE = tuple(sorted(_shuffled[:_DEV_SIZE]))
+HOLDOUT_UNIVERSE = tuple(sorted(_shuffled[_DEV_SIZE:]))
 
 
 def run_ticker(ticker: str) -> list[dict]:

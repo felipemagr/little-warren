@@ -18,6 +18,7 @@ data/cache/
 docs/*.pdf
 docs/extraction/
 docs/sistema.md
+docs/calibration-report.md
 
 # macOS
 .DS_Store
