@@ -26,9 +26,10 @@ class TestAnalyzeFrame:
 
         assert pick is not None
         assert pick.direction is Direction.SHORT
-        assert pick.stop == pytest.approx(160 * 1.005)  # STP-02 beyond the wave-5 extreme
+        assert pick.stop == pytest.approx(160 * 1.02)  # STP-02 beyond the wave-5 extreme (calibrated offset)
+        assert pick.entry == pytest.approx(152.0)  # LINE_LEVEL entry at the 2-4 line on the break bar
         assert pick.target == pytest.approx(138)  # x3 impulse -> wave-4 zone
-        assert 0.5 <= pick.confidence <= 0.95
+        assert pick.confidence == pytest.approx(0.70)  # plain confirmed break, empirically the best bucket
         assert "L24-03" in pick.rules_fired and "STP-02" in pick.rules_fired
 
     def test_down_impulse_produces_long_pick(self):
@@ -39,7 +40,7 @@ class TestAnalyzeFrame:
 
         assert pick is not None
         assert pick.direction is Direction.LONG
-        assert pick.stop == pytest.approx(140 * 0.995)  # wave-5 extreme of the mirrored impulse
+        assert pick.stop == pytest.approx(140 * 0.98)  # wave-5 extreme of the mirrored impulse
         assert pick.stop < pick.entry
 
     def test_fifth_failure_targets_pattern_origin_with_higher_confidence(self):
@@ -50,7 +51,9 @@ class TestAnalyzeFrame:
         assert pick is not None
         assert pick.target == pytest.approx(100)  # full retrace to origin
         assert "L24-09" in pick.rules_fired
-        assert pick.confidence >= 0.8  # confirmed + violent + fifth failure
+        # Empirical weights: fifth failures underperform plain breaks (0.70 - 0.15).
+        assert pick.confidence == pytest.approx(0.55)
+        assert pick.evidence["fifth_failure"] is True
 
     def test_no_pick_when_no_impulse(self):
         frame = bars_from_waypoints([100, 110, 104, 112, 106, 114, 108], bars_per_leg=5)

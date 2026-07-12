@@ -75,7 +75,7 @@ def run_ticker(ticker: str) -> list[dict]:
     end = date.today()
     try:
         frame = YFinanceProvider().fetch_ohlcv(ticker, start=end - timedelta(days=2500), end=end)
-        report = BacktestService(AnalysisService(provider=None, reversal=0.05)).run(frame, ticker=ticker)
+        report = BacktestService(AnalysisService(provider=None)).run(frame, ticker=ticker)
     except Exception as error:  # noqa: BLE001 - QA sweep must survive bad tickers
         print(f"{ticker}: ERROR {error}")
         return []
@@ -102,22 +102,32 @@ def main() -> None:
             trades.extend(result)
             print(f"{futures[future]}: {len(result)} trades")
 
-    closed = [t for t in trades if t["outcome"] != "open"]
-    wins = [t for t in closed if t["outcome"] == "target"]
-    gains = sum(t["r"] for t in closed if t["r"] and t["r"] > 0)
-    losses = -sum(t["r"] for t in closed if t["r"] and t["r"] < 0)
+    def summarize(label: str, cohort: list[dict]) -> None:
+        closed = [t for t in cohort if t["outcome"] != "open"]
+        if not closed:
+            print(f"{label}: no closed trades")
+            return
+        wins = [t for t in closed if t["outcome"] == "target"]
+        gains = sum(t["r"] for t in closed if t["r"] and t["r"] > 0)
+        losses = -sum(t["r"] for t in closed if t["r"] and t["r"] < 0)
+        pf = f"{gains / losses:.2f}" if losses else "inf"
+        avg = sum(t["r"] for t in closed if t["r"] is not None) / len(closed)
+        print(f"{label}: {len(closed)} closed | hit {100 * len(wins) / len(closed):.1f}% | PF {pf} | avg {avg:+.2f}R")
+        high = [t for t in closed if t["confidence"] >= 0.70]
+        if high:
+            high_wins = sum(1 for t in high if t["outcome"] == "target")
+            print(f"  HIGH-CONFIDENCE (>=0.70): {len(high)} trades | precision {100 * high_wins / len(high):.1f}%")
+        low = [t for t in closed if t["confidence"] < 0.70]
+        if low:
+            low_wins = sum(1 for t in low if t["outcome"] == "target")
+            print(f"  low-confidence  (<0.70): {len(low)} trades | precision {100 * low_wins / len(low):.1f}%")
 
-    print("\n===== AGGREGATE =====")
-    print(f"tickers: {len(UNIVERSE)}  trades: {len(trades)}  closed: {len(closed)}")
-    if closed:
-        print(f"HIT RATE: {100 * len(wins) / len(closed):.1f}%")
-        print(f"profit factor: {gains / losses:.2f}" if losses else "profit factor: inf")
-        print(f"avg R: {sum(t['r'] for t in closed if t['r'] is not None) / len(closed):+.2f}")
-        for lo, hi in ((0.0, 0.55), (0.55, 0.7), (0.7, 1.0)):
-            bucket = [t for t in closed if lo <= t["confidence"] < hi]
-            if bucket:
-                rate = 100 * sum(1 for t in bucket if t["outcome"] == "target") / len(bucket)
-                print(f"confidence [{lo:.2f}-{hi:.2f}): {len(bucket)} trades, {rate:.1f}% hit")
+    print("\n===== AGGREGATE (calibrated defaults) =====")
+    dev = [t for t in trades if t["ticker"] in DEV_UNIVERSE]
+    holdout = [t for t in trades if t["ticker"] in HOLDOUT_UNIVERSE]
+    summarize("DEV     ", dev)
+    summarize("HOLDOUT ", holdout)
+    summarize("ALL     ", trades)
     with open("data/cache/universe_backtest.json", "w") as handle:
         json.dump(trades, handle, indent=1)
     print("detail: data/cache/universe_backtest.json")

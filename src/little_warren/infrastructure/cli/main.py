@@ -29,7 +29,7 @@ def analyze(
     ticker: str,
     days: int = typer.Option(None, help="Lookback window in days (defaults to settings)"),
     interval: str = typer.Option(None, help="Bar interval, e.g. 1d, 1wk"),
-    reversal: float = typer.Option(0.05, help="Swing detection reversal threshold (fraction)"),
+    reversal: float = typer.Option(0.04, help="Swing detection reversal threshold (fraction, calibrated default)"),
 ) -> None:
     """Analyse a ticker with the rules engine and print the pick, if any."""
     from datetime import date
@@ -61,7 +61,7 @@ def backtest(
     ticker: str,
     days: int = typer.Option(1825, help="History window in days (default ~5y)"),
     interval: str = typer.Option("1d", help="Bar interval"),
-    reversal: float = typer.Option(0.05, help="Swing detection reversal threshold (fraction)"),
+    reversal: float = typer.Option(0.04, help="Swing detection reversal threshold (fraction, calibrated default)"),
 ) -> None:
     """Walk-forward backtest of the rules engine on one ticker."""
     from datetime import date, timedelta

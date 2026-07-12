@@ -17,18 +17,26 @@ from little_warren.domain.rules.impulse import ImpulseAssessment, classify_impul
 from little_warren.domain.rules.linea_24 import BreakStatus, LineBreakResult, confirms_fifth_failure, evaluate_linea_24
 from little_warren.domain.value_objects.wave import Wave
 
-STOP_OFFSET_FRACTION = 0.005
-"""ASSUMED (spec gap): STP-02 places the stop 'slightly beyond' the prior swing
-extreme without quantifying the offset. Default 0.5%; tune via backtest."""
+STOP_OFFSET_FRACTION = 0.02
+"""STP-02 places the stop 'slightly beyond' the prior swing extreme without
+quantifying the offset (spec gap). CALIBRATED 2026-07 on the dev split: 2%
+beat 0.5%/1% across the grid (see docs/calibration-report.md, local)."""
 
-CONFIDENCE_BASE_CONFIRMED = 0.5
-CONFIDENCE_VIOLENT_BONUS = 0.15
-CONFIDENCE_FIFTH_FAILURE_BONUS = 0.15
-CONFIDENCE_TERMINAL_BONUS = 0.10
+DEFAULT_REVERSAL = 0.04
+"""Swing-detection threshold. CALIBRATED 2026-07 on the dev split."""
+
+CONFIDENCE_BASE_CONFIRMED = 0.70
+CONFIDENCE_VIOLENT_BONUS = 0.0
+CONFIDENCE_FIFTH_FAILURE_BONUS = -0.15
+CONFIDENCE_TERMINAL_BONUS = -0.10
+CONFIDENCE_EXTENDED_W1_PENALTY = -0.20
 CONFIDENCE_CAP = 0.95
-"""Confidence v0: heuristic weights over rule-traced evidence (CONFIRMED break =
-the spec's 'most reliable signal'; fifth failure and terminal patterns carry a
-minimum-move guarantee to the pattern origin). Calibrate against backtests."""
+CONFIDENCE_FLOOR = 0.05
+"""Confidence v1: weights derived from EMPIRICAL dev-set bucket hit rates
+(2026-07 calibration): plain confirmed breaks hit ~70-75%; violent breaks add
+nothing; fifth-failure, terminal and extended-wave-1 patterns all mark WEAKER
+buckets despite the spec's enthusiasm for them. Recalibrate after any change
+to entries, stops or filters."""
 
 
 class EntryMode(StrEnum):
@@ -50,10 +58,10 @@ class AnalysisService:
     def __init__(
         self,
         provider: MarketDataProvider,
-        reversal: float = 0.05,
+        reversal: float = DEFAULT_REVERSAL,
         freshness_bars: int = 10,
         stop_offset: float = STOP_OFFSET_FRACTION,
-        entry_mode: EntryMode | str = EntryMode.BREAK_CLOSE,
+        entry_mode: EntryMode | str = EntryMode.LINE_LEVEL,
     ):
         self._provider = provider
         self._reversal = reversal
@@ -115,6 +123,8 @@ class AnalysisService:
         if assessment.is_terminal:
             confidence += CONFIDENCE_TERMINAL_BONUS
             rules.append("PAT-TER-01")
+        if assessment.extended_wave == 1:
+            confidence += CONFIDENCE_EXTENDED_W1_PENALTY
 
         return Pick(
             ticker=ticker,
@@ -123,7 +133,7 @@ class AnalysisService:
             entry=entry,
             stop=stop,
             target=target,
-            confidence=min(confidence, CONFIDENCE_CAP),
+            confidence=max(min(confidence, CONFIDENCE_CAP), CONFIDENCE_FLOOR),
             rules_fired=list(dict.fromkeys(rules)),
             evidence={
                 "violent": outcome.violent,
