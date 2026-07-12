@@ -18,6 +18,8 @@ dependencies = [
     "typer>=0.20.0",
     "plotly>=6.9.0",
     "streamlit>=1.59.1",
+    "lxml>=6.1.1",
+    "requests>=2.34.2",
 ]
 
 [dependency-groups]
@@ -56,6 +58,9 @@ select = [
   "ASYNC",
   "W",
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

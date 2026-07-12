@@ -57,6 +57,48 @@ def analyze(
 
 
 @app.command()
+def scan(
+    tickers: list[str] = typer.Argument(None, help="Tickers to scan; add --preset for whole indices"),
+    preset: list[str] = typer.Option([], help="Universe preset(s): 'S&P 500', 'DAX 40', 'FTSE 100', 'IBEX 35'..."),
+    min_confidence: float = typer.Option(0.70, help="Only show picks at or above this confidence"),
+    days: int = typer.Option(730, help="Lookback window in days"),
+) -> None:
+    """Scan a universe and print the picks worth looking at."""
+    from datetime import date
+
+    from little_warren.application.analysis_service.service import AnalysisService
+    from little_warren.application.scan_service import ScanService
+    from little_warren.infrastructure.data.universes import get_presets
+
+    presets = get_presets()
+    universe = list(tickers or [])
+    for name in preset:
+        if name not in presets:
+            typer.echo(f"unknown preset {name!r}; available: {', '.join(presets)}")
+            raise typer.Exit(1)
+        universe += presets[name]
+    if not universe:
+        typer.echo("nothing to scan: pass tickers and/or --preset")
+        raise typer.Exit(1)
+
+    service = ScanService(AnalysisService(provider=YFinanceProvider()))
+    result = service.scan(universe, as_of=date.today(), lookback_days=days)
+
+    picks = result.picks_above(min_confidence)
+    typer.echo(
+        f"scanned {result.scanned} tickers | {len(result.picks)} signals | {len(picks)} at >= {min_confidence:.0%}"
+    )
+    if result.failed:
+        typer.echo(f"no data: {', '.join(result.failed)}")
+    for p in picks:
+        target = f"{p.target:9.2f}" if p.target else "        -"
+        typer.echo(
+            f"  {p.ticker:8} {p.direction.value:5} conf {p.confidence:.0%}  "
+            f"entry {p.entry:9.2f}  stop {p.stop:9.2f}  target {target}  [{', '.join(p.rules_fired)}]"
+        )
+
+
+@app.command()
 def backtest(
     ticker: str,
     days: int = typer.Option(1825, help="History window in days (default ~5y)"),

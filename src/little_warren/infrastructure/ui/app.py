@@ -10,7 +10,7 @@ from little_warren.application.analysis_service.service import AnalysisService
 from little_warren.application.scan_service import ScanResult, ScanService
 from little_warren.domain.entities import Pick
 from little_warren.infrastructure.data import YFinanceProvider
-from little_warren.infrastructure.data.universes import PRESETS
+from little_warren.infrastructure.data.universes import get_presets
 
 INK = "#444444"
 STOP_COLOR = "#c0392b"
@@ -19,6 +19,11 @@ UP_COLOR = "#7fb3a4"
 DOWN_COLOR = "#c98a8a"
 
 st.set_page_config(page_title="little-warren scanner", page_icon=None, layout="wide")
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner="Loading index constituents...")
+def load_presets() -> dict[str, list[str]]:
+    return get_presets()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -107,7 +112,11 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Universe")
-        chosen_presets = st.multiselect("Presets", list(PRESETS), default=["US large caps"])
+        presets = load_presets()
+        labels = {name: f"{name} ({len(tickers)})" for name, tickers in presets.items()}
+        chosen_presets = st.multiselect(
+            "Presets", list(presets), default=["S&P 500"], format_func=lambda name: labels[name]
+        )
         custom = st.text_area("Any other tickers", placeholder="TSLA, BTC-USD, GOLD ... anything Yahoo knows")
         st.header("Filters")
         min_confidence = st.slider("Minimum confidence", 0.0, 0.95, 0.70, step=0.05)
@@ -117,7 +126,7 @@ def main() -> None:
             stochastic_gate = st.checkbox("Hard stochastic gate (ENT-COR-03)", value=False)
         scan_clicked = st.button("Scan", type="primary", use_container_width=True)
 
-    tickers = [t for preset in chosen_presets for t in PRESETS[preset]]
+    tickers = [t for preset in chosen_presets for t in presets[preset]]
     tickers += custom.replace(",", " ").split()
 
     if scan_clicked:
