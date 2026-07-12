@@ -72,6 +72,7 @@ def run_ticker(ticker: str) -> list[dict]:
             "entry": t.pick.entry,
             "stop": t.pick.stop,
             "rules": t.pick.rules_fired,
+            "evidence": t.pick.evidence,
         }
         for t in report.trades
     ]
@@ -98,7 +99,8 @@ def summarize(label: str, cohort: list[dict]) -> None:
     losses = -sum(r for r in adjusted if r and r < 0)
     pf = f"{gains / losses:.2f}" if losses else "inf"
     avg = sum(r for r in adjusted if r is not None) / len(closed)
-    print(f"{label}: {len(closed)} closed | hit {100 * wins / len(closed):.1f}% | PF {pf} | avg {avg:+.2f}R (net of costs)")
+    hit = 100 * wins / len(closed)
+    print(f"{label}: {len(closed)} closed | hit {hit:.1f}% | PF {pf} | avg {avg:+.2f}R (net of costs)")
     for name, bucket in (
         ("HIGH-CONF (>=0.70)", [t for t in closed if t["confidence"] >= 0.70]),
         ("low-conf  (<0.70)", [t for t in closed if t["confidence"] < 0.70]),

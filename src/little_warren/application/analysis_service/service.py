@@ -12,6 +12,7 @@ import pandas as pd
 
 from little_warren.application.analysis_service.ports import MarketDataProvider
 from little_warren.domain.analysis import detect_swings, segment_waves
+from little_warren.domain.analysis.indicators import stochastic_k_at, weekly_stochastic_k_at
 from little_warren.domain.entities import Direction, Pick
 from little_warren.domain.rules.impulse import ImpulseAssessment, classify_impulse
 from little_warren.domain.rules.linea_24 import BreakStatus, LineBreakResult, confirms_fifth_failure, evaluate_linea_24
@@ -62,12 +63,14 @@ class AnalysisService:
         freshness_bars: int = 10,
         stop_offset: float = STOP_OFFSET_FRACTION,
         entry_mode: EntryMode | str = EntryMode.LINE_LEVEL,
+        stochastic_gate: bool = False,  # MEASURED 2026-07: no signal for impulse-reversal picks; keep off (see note)
     ):
         self._provider = provider
         self._reversal = reversal
         self._freshness_bars = freshness_bars
         self._stop_offset = stop_offset
         self._entry_mode = EntryMode(entry_mode)
+        self._stochastic_gate = stochastic_gate
 
     def analyze(self, ticker: str, as_of: date, lookback_days: int = 730, interval: str = "1d") -> Pick | None:
         """Fetch data up to `as_of` and analyse it (no look-ahead beyond as_of)."""
@@ -91,7 +94,10 @@ class AnalysisService:
                 continue
             if (len(frame) - 1) - outcome.break_index > self._freshness_bars:
                 continue
-            return self._build_pick(frame, waves, assessment, outcome, ticker, as_of)
+            pick = self._build_pick(frame, waves, assessment, outcome, ticker, as_of)
+            if self._stochastic_gate and pick.evidence.get("stoch_filter") == "fail":
+                continue  # ENT-COR-03 hard gate: skip entries the oscillators argue against
+            return pick
         return None
 
     def _build_pick(
@@ -126,6 +132,14 @@ class AnalysisService:
         if assessment.extended_wave == 1:
             confidence += CONFIDENCE_EXTENDED_W1_PENALTY
 
+        stoch_daily, stoch_weekly, stoch_filter = self._stochastic_filter(
+            frame, outcome.break_index, direction, exempt=fifth_failure or assessment.is_terminal
+        )
+        if stoch_filter in ("pass", "fail"):
+            rules.append("ENT-COR-03")
+        elif stoch_filter == "exempt":
+            rules.append("ENT-COR-04")
+
         return Pick(
             ticker=ticker,
             as_of=as_of,
@@ -140,9 +154,41 @@ class AnalysisService:
                 "fifth_failure": fifth_failure,
                 "terminal": assessment.is_terminal,
                 "extended_wave": assessment.extended_wave,
+                "stoch_daily": None if stoch_daily is None else round(stoch_daily, 1),
+                "stoch_weekly": None if stoch_weekly is None else round(stoch_weekly, 1),
+                "stoch_filter": stoch_filter,
             },
             notes=outcome.detail,
         )
+
+    def _stochastic_filter(
+        self, frame: pd.DataFrame, break_index: int, direction: Direction, exempt: bool
+    ) -> tuple[float | None, float | None, str]:
+        """ENT-COR-03/04: oscillator filter for the entry, evaluated at the break bar.
+
+        Longs need weekly %K > 50 AND daily %K > 70; shorts mirror (< 50 / < 30).
+        Fifth-failure and terminal patterns are exempt (their minimum move is
+        guaranteed). Components without enough history are skipped; if none can
+        be evaluated the verdict is 'unavailable' and nothing is gated on it.
+
+        MEASURED (2026-07 big validation): for impulse-reversal picks this
+        verdict carries no signal (fail-precision == ungated precision) because
+        the spec tunes these thresholds for corrective-pattern early entries,
+        where momentum aligns WITH the new trend. Keep the gate off for
+        impulse reversals; revisit when corrective-pattern entries exist.
+        """
+        daily = stochastic_k_at(frame, break_index)
+        weekly = weekly_stochastic_k_at(frame, break_index)
+        if exempt:
+            return daily, weekly, "exempt"
+
+        if direction is Direction.LONG:
+            checks = [(daily, daily is None or daily > 70), (weekly, weekly is None or weekly > 50)]
+        else:
+            checks = [(daily, daily is None or daily < 30), (weekly, weekly is None or weekly < 50)]
+        if all(value is None for value, _ in checks):
+            return daily, weekly, "unavailable"
+        return daily, weekly, "pass" if all(ok for _, ok in checks) else "fail"
 
     def _entry_price(self, frame: pd.DataFrame, outcome: LineBreakResult, stop: float, impulse_up: bool) -> float:
         """Entry per the configured mode.

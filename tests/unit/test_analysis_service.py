@@ -79,6 +79,33 @@ class TestAnalyzeFrame:
 
         assert service().analyze_frame(frame, ticker="TEST", as_of=AS_OF) is None
 
+    def test_stochastic_evidence_recorded(self):
+        frame = bars_from_waypoints([100, 120, 110, 150, 138, 160, 130], bars_per_leg=[5, 5, 5, 5, 3, 5])
+
+        pick = service().analyze_frame(frame, ticker="TEST", as_of=AS_OF)
+
+        assert pick.evidence["stoch_filter"] in ("pass", "fail", "exempt", "unavailable")
+        assert "ENT-COR-03" in pick.rules_fired or "ENT-COR-04" in pick.rules_fired
+
+    def test_stochastic_gate_drops_failing_short(self):
+        # Short signal whose break bar closes mid-range: daily %K ~45 is not < 30.
+        frame = bars_from_waypoints([100, 120, 110, 150, 138, 160, 148], bars_per_leg=[5, 5, 5, 5, 3, 4])
+        gated = AnalysisService(provider=None, reversal=0.05, stochastic_gate=True)
+        ungated = AnalysisService(provider=None, reversal=0.05)
+
+        open_pick = ungated.analyze_frame(frame, ticker="TEST", as_of=AS_OF)
+        assert open_pick is not None and open_pick.evidence["stoch_filter"] == "fail"
+
+        assert gated.analyze_frame(frame, ticker="TEST", as_of=AS_OF) is None
+
+    def test_fifth_failure_is_exempt_from_stochastics(self):
+        frame = bars_from_waypoints([100, 120, 110, 152, 136, 146, 100], bars_per_leg=[5, 5, 5, 5, 3, 2])
+
+        pick = service().analyze_frame(frame, ticker="TEST", as_of=AS_OF)
+
+        assert pick.evidence["stoch_filter"] == "exempt"
+        assert "ENT-COR-04" in pick.rules_fired
+
     def test_pick_is_traceable(self):
         frame = bars_from_waypoints([100, 120, 110, 150, 138, 160, 130], bars_per_leg=[5, 5, 5, 5, 3, 5])
 
