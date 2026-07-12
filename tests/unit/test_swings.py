@@ -61,6 +61,28 @@ class TestDetectSwings:
         kinds = [p.kind for p in pivots]
         assert all(a != b for a, b in zip(kinds, kinds[1:], strict=False))
 
+    def test_wide_bar_never_yields_same_index_pivots(self):
+        # Bar 1 spans >5% on its own: without collapsing, it becomes a swing low
+        # AND a swing high at the same index, breaking Wave validation downstream.
+        import pandas as pd
+
+        data = {
+            "open": [100, 100, 105, 103, 101, 99, 97],
+            "high": [100, 112, 105, 103, 101, 99, 97],
+            "low": [100, 95, 104, 102, 100, 98, 96],
+            "close": [100, 111, 105, 103, 101, 99, 97],
+            "volume": [1] * 7,
+        }
+        frame = pd.DataFrame(data, index=pd.bdate_range("2024-01-01", periods=7))
+
+        pivots = detect_swings(frame, reversal=0.05)
+
+        indices = [p.index for p in pivots]
+        assert indices == sorted(set(indices)), "pivot indices must be strictly increasing"
+        from little_warren.domain.analysis import segment_waves
+
+        segment_waves(pivots)  # must not raise
+
     def test_invalid_reversal_rejected(self):
         frame = bars_from_waypoints([100, 110])
         with pytest.raises(ValueError, match="reversal must be > 0"):

@@ -47,11 +47,11 @@ def detect_swings(frame: pd.DataFrame, reversal: float = 0.05) -> list[SwingPoin
             if lows[i] < extreme_low:
                 extreme_low, extreme_low_index = lows[i], i
             if highs[i] >= extreme_low * (1 + reversal):
-                pivots.append(_pivot(timestamps, extreme_low_index, extreme_low, SwingKind.LOW))
+                _push(pivots, _pivot(timestamps, extreme_low_index, extreme_low, SwingKind.LOW))
                 direction = SwingKind.HIGH
                 extreme_high, extreme_high_index = highs[i], i
             elif lows[i] <= extreme_high * (1 - reversal):
-                pivots.append(_pivot(timestamps, extreme_high_index, extreme_high, SwingKind.HIGH))
+                _push(pivots, _pivot(timestamps, extreme_high_index, extreme_high, SwingKind.HIGH))
                 direction = SwingKind.LOW
                 extreme_low, extreme_low_index = lows[i], i
         elif direction is SwingKind.HIGH:
@@ -59,7 +59,7 @@ def detect_swings(frame: pd.DataFrame, reversal: float = 0.05) -> list[SwingPoin
             if highs[i] > extreme_high:
                 extreme_high, extreme_high_index = highs[i], i
             elif lows[i] <= extreme_high * (1 - reversal):
-                pivots.append(_pivot(timestamps, extreme_high_index, extreme_high, SwingKind.HIGH))
+                _push(pivots, _pivot(timestamps, extreme_high_index, extreme_high, SwingKind.HIGH))
                 direction = SwingKind.LOW
                 extreme_low, extreme_low_index = lows[i], i
         else:
@@ -67,11 +67,24 @@ def detect_swings(frame: pd.DataFrame, reversal: float = 0.05) -> list[SwingPoin
             if lows[i] < extreme_low:
                 extreme_low, extreme_low_index = lows[i], i
             elif highs[i] >= extreme_low * (1 + reversal):
-                pivots.append(_pivot(timestamps, extreme_low_index, extreme_low, SwingKind.LOW))
+                _push(pivots, _pivot(timestamps, extreme_low_index, extreme_low, SwingKind.LOW))
                 direction = SwingKind.HIGH
                 extreme_high, extreme_high_index = highs[i], i
 
     return pivots
+
+
+def _push(pivots: list[SwingPoint], pivot: SwingPoint) -> None:
+    """Append a confirmed pivot, collapsing zero-duration swings.
+
+    A single wide-range bar can be both extremes at once, producing two pivots
+    at the same bar index; that pair is a zero-duration swing, so the previous
+    pivot is dropped instead (alternation of the remaining pivots is preserved).
+    """
+    if pivots and pivot.index <= pivots[-1].index:
+        pivots.pop()
+        return
+    pivots.append(pivot)
 
 
 def _pivot(timestamps: pd.Index, index: int, price: float, kind: SwingKind) -> SwingPoint:
