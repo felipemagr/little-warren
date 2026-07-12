@@ -145,13 +145,21 @@ class AnalysisService:
         )
 
     def _entry_price(self, frame: pd.DataFrame, outcome: LineBreakResult, stop: float, impulse_up: bool) -> float:
-        """Entry per the configured mode; LINE_LEVEL falls back to the close if the line sits beyond the stop."""
-        break_close = float(frame["close"].iloc[outcome.break_index])
+        """Entry per the configured mode.
+
+        LINE_LEVEL fills at the 2-4 line price only when that price actually
+        traded within the break bar's range (no fills on gaps through the line)
+        and the line sits on the protected side of the stop; otherwise it falls
+        back to the break close.
+        """
+        bar = frame.iloc[outcome.break_index]
+        break_close = float(bar["close"])
         if self._entry_mode is EntryMode.BREAK_CLOSE:
             return break_close
         line_level = outcome.line.price_at(outcome.break_index)
+        traded = float(bar["low"]) <= line_level <= float(bar["high"])
         protected = line_level < stop if impulse_up else line_level > stop
-        return line_level if protected else break_close
+        return line_level if traded and protected else break_close
 
     def _target(self, waves: list[Wave], assessment: ImpulseAssessment, fifth_failure: bool) -> tuple[float, str]:
         """L24-04 phase 2: per-pattern minimum retracement requirement."""

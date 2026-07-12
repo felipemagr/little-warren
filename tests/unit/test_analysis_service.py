@@ -27,7 +27,9 @@ class TestAnalyzeFrame:
         assert pick is not None
         assert pick.direction is Direction.SHORT
         assert pick.stop == pytest.approx(160 * 1.02)  # STP-02 beyond the wave-5 extreme (calibrated offset)
-        assert pick.entry == pytest.approx(152.0)  # LINE_LEVEL entry at the 2-4 line on the break bar
+        # Degenerate synthetic bars never trade AT the line, so the honest fill
+        # falls back to the break close (148); see test_line_fill_when_bar_trades_at_line.
+        assert pick.entry == pytest.approx(148.0)
         assert pick.target == pytest.approx(138)  # x3 impulse -> wave-4 zone
         assert pick.confidence == pytest.approx(0.70)  # plain confirmed break, empirically the best bucket
         assert "L24-03" in pick.rules_fired and "STP-02" in pick.rules_fired
@@ -54,6 +56,17 @@ class TestAnalyzeFrame:
         # Empirical weights: fifth failures underperform plain breaks (0.70 - 0.15).
         assert pick.confidence == pytest.approx(0.55)
         assert pick.evidence["fifth_failure"] is True
+
+    def test_line_fill_when_bar_trades_at_line(self):
+        # Give the break bar a real range spanning the line (152): honest line fill.
+        frame = bars_from_waypoints([100, 120, 110, 150, 138, 160, 130], bars_per_leg=[5, 5, 5, 5, 3, 5])
+        break_bar = 25  # first close below the rising line
+        frame.iloc[break_bar, frame.columns.get_loc("high")] = 155.0
+
+        pick = service().analyze_frame(frame, ticker="TEST", as_of=AS_OF)
+
+        assert pick is not None
+        assert pick.entry == pytest.approx(152.0)  # filled AT the 2-4 line
 
     def test_no_pick_when_no_impulse(self):
         frame = bars_from_waypoints([100, 110, 104, 112, 106, 114, 108], bars_per_leg=5)
